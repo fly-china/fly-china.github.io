@@ -69,19 +69,26 @@
     <article id="post-脱掉Java线程状态的衣服" class="article article-type-post" itemscope itemprop="blogPost">
   <div class="article-meta">
     <a href="/2019/03/26/脱掉Java线程状态的衣服/" class="article-date">
-  <time datetime="2019-03-26T07:09:01.158Z" itemprop="datePublished">2019-03-26</time>
+  <time datetime="2019-03-26T08:08:39.841Z" itemprop="datePublished">2019-03-26</time>
 </a>
     
   </div>
   <div class="article-inner">
     
     
+      <header class="article-header">
+        
+  
+    <h1 itemprop="name">
+      <a class="article-title" href="/2019/03/26/脱掉Java线程状态的衣服/">脱掉线程状态的衣服</a>
+    </h1>
+  
+
+      </header>
+    
     <div class="article-entry" itemprop="articleBody">
       
-        <p>title: 脱掉线程状态的衣服</p>
-<p>#目录</p>
-<p>@[toc]</p>
-<h2 id="一、线程的5种状态"><a href="#一、线程的5种状态" class="headerlink" title="一、线程的5种状态"></a>一、线程的5种状态</h2><p><img src="https://img-blog.csdn.net/20180518183028947?watermark/2/text/aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2xwZjQ2MzA2MTY1NQ==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70" alt="线程状态图"><br>众所周知，Java的线程状态有5种，分别对应上图中五种不同颜色，下面对这5种状态及状态间的转化做相应的解释：</p>
+        <h2 id="一、线程的5种状态"><a href="#一、线程的5种状态" class="headerlink" title="一、线程的5种状态"></a>一、线程的5种状态</h2><p><img src="https://static-1256338184.cos.ap-beijing.myqcloud.com/%E7%BA%BF%E7%A8%8B%E7%8A%B6%E6%80%81%E5%9B%BE.png" alt="线程状态图"><br>众所周知，Java的线程状态有5种，分别对应上图中五种不同颜色，下面对这5种状态及状态间的转化做相应的解释：</p>
 <ol>
 <li><strong>初始化状态</strong>：新建一个线程对象</li>
 <li><strong>可运行状态</strong>：其他线程调用了该线程对象的start()方法。该状态的线程位于可运行线程池中，变得可运行，等待获取CPU的使用权</li>
@@ -95,7 +102,7 @@
 <li>等待队列（等待被唤醒）：对应等待阻塞。调用obj的wait()方法，则进入等待队列</li>
 <li>锁池（等待抢锁）：对应同步阻塞。<br>a)当前running线程调用对象obj的同步方法时，发现锁被其他线程持有，则直接进入锁池。<br>b)当前等待队列中阻塞的线程A，等待被线程B唤醒，唤醒后并非直接进去runnable状态，而是进入线程A所对应的锁池中，等待抢到锁。</li>
 </ol>
-<p>下图直观描绘了running-&gt;等待队列-&gt;锁池-&gt;runnable间的状态流转，帮助大家理解。<br><img src="https://img-blog.csdn.net/20180518183110286?watermark/2/text/aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2xwZjQ2MzA2MTY1NQ==/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70" alt="阻塞状态模拟"></p>
+<p>下图直观描绘了running-&gt;等待队列-&gt;锁池-&gt;runnable间的状态流转，帮助大家理解。<br><img src="https://static-1256338184.cos.ap-beijing.myqcloud.com/%E7%BA%BF%E7%A8%8B%E9%98%BB%E5%A1%9E%E9%98%9F%E5%88%97.png" alt="阻塞状态模拟"></p>
 <p>怎么样，有没有通透很多？啊！还是有些小迷糊。好，那我们下面从jdk源码中对线程状态的描述进行分析</p>
 <h2 id="二、Thread-State枚举类中的BLOCKED、WAITING、TIMED-WAITING"><a href="#二、Thread-State枚举类中的BLOCKED、WAITING、TIMED-WAITING" class="headerlink" title="二、Thread.State枚举类中的BLOCKED、WAITING、TIMED_WAITING"></a>二、Thread.State枚举类中的BLOCKED、WAITING、TIMED_WAITING</h2><p>我们打开Jdk源码中Thread类，会发现里面有定义State的枚举，枚举中有：NEW、RUNNABLE、BLOCKED、WAITING、TIMED_WAITING、TERMINATED。由于线程中的初始化和死亡状态很短，我们不用太关心，runnable状态暂无歧义。我们只针对BLOCKED、WAITING、TIMED_WAITING三种可能混淆的状态进行分析</p>
 <p>首先，上源码<br><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Thread state for a thread blocked waiting for a monitor lock.</span></span><br><span class="line"><span class="comment"> * A thread in the blocked state is waiting for a monitor lock</span></span><br><span class="line"><span class="comment"> * to enter a synchronized block/method or</span></span><br><span class="line"><span class="comment"> * reenter a synchronized block/method after calling</span></span><br><span class="line"><span class="comment"> * &#123;<span class="doctag">@link</span> Object#wait() Object.wait&#125;.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line">BLOCKED,</span><br><span class="line"><span class="comment">// 受阻塞并且正在等待monitor锁的某一线程的线程状态。</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Thread state for a waiting thread.</span></span><br><span class="line"><span class="comment"> * A thread is in the waiting state due to calling one of the</span></span><br><span class="line"><span class="comment"> * following methods:</span></span><br><span class="line"><span class="comment"> * &lt;ul&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> Object#wait() Object.wait&#125; with no timeout&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> #join() Thread.join&#125; with no timeout&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> LockSupport#park() LockSupport.park&#125;&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> * &lt;/ul&gt;</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * &lt;p&gt;A thread in the waiting state is waiting for another thread to</span></span><br><span class="line"><span class="comment"> * perform a particular action.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * For example, a thread that has called &lt;tt&gt;Object.wait()&lt;/tt&gt;</span></span><br><span class="line"><span class="comment"> * on an object is waiting for another thread to call</span></span><br><span class="line"><span class="comment"> * &lt;tt&gt;Object.notify()&lt;/tt&gt; or &lt;tt&gt;Object.notifyAll()&lt;/tt&gt; on</span></span><br><span class="line"><span class="comment"> * that object. A thread that has called &lt;tt&gt;Thread.join()&lt;/tt&gt;</span></span><br><span class="line"><span class="comment"> * is waiting for a specified thread to terminate.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line">WAITING,</span><br><span class="line"><span class="comment">// 某一等待线程的线程状态。</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Thread state for a waiting thread with a specified waiting time.</span></span><br><span class="line"><span class="comment"> * A thread is in the timed waiting state due to calling one of</span></span><br><span class="line"><span class="comment"> * the following methods with a specified positive waiting time:</span></span><br><span class="line"><span class="comment"> * &lt;ul&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> #sleep Thread.sleep&#125;&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> Object#wait(long) Object.wait&#125; with timeout&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> #join(long) Thread.join&#125; with timeout&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> LockSupport#parkNanos LockSupport.parkNanos&#125;&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> *   &lt;li&gt;&#123;<span class="doctag">@link</span> LockSupport#parkUntil LockSupport.parkUntil&#125;&lt;/li&gt;</span></span><br><span class="line"><span class="comment"> * &lt;/ul&gt;</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line">TIMED_WAITING,</span><br><span class="line"><span class="comment">// 具有指定等待时间的某一等待线程的线程状态</span></span><br></pre></td></tr></table></figure></p>
@@ -133,43 +140,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://yoursite.com/2019/03/26/脱掉Java线程状态的衣服/" data-id="cjtphjyfv00027805w58ieuoq" class="article-share-link">Share</a>
-      
-      
-    </footer>
-  </div>
-  
-</article>
-
-
-  
-    <article id="post-My-New-Post" class="article article-type-post" itemscope itemprop="blogPost">
-  <div class="article-meta">
-    <a href="/2019/03/26/My-New-Post/" class="article-date">
-  <time datetime="2019-03-26T07:06:43.000Z" itemprop="datePublished">2019-03-26</time>
-</a>
-    
-  </div>
-  <div class="article-inner">
-    
-    
-      <header class="article-header">
-        
-  
-    <h1 itemprop="name">
-      <a class="article-title" href="/2019/03/26/My-New-Post/">My New Post</a>
-    </h1>
-  
-
-      </header>
-    
-    <div class="article-entry" itemprop="articleBody">
-      
-        
-      
-    </div>
-    <footer class="article-footer">
-      <a data-url="http://yoursite.com/2019/03/26/My-New-Post/" data-id="cjtphjyf6000078059rhxnm2e" class="article-share-link">Share</a>
+      <a data-url="http://yoursite.com/2019/03/26/脱掉Java线程状态的衣服/" data-id="cjtpi1bxj00015q05ubbfxu6n" class="article-share-link">Share</a>
       
       
     </footer>
@@ -214,7 +185,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="http://yoursite.com/2019/03/26/hello-world/" data-id="cjtphjyfl00017805mzbbbfsp" class="article-share-link">Share</a>
+      <a data-url="http://yoursite.com/2019/03/26/hello-world/" data-id="cjtpi1bww00005q05o0lwhm6j" class="article-share-link">Share</a>
       
       
     </footer>
@@ -255,11 +226,7 @@
       <ul>
         
           <li>
-            <a href="/2019/03/26/脱掉Java线程状态的衣服/">(no title)</a>
-          </li>
-        
-          <li>
-            <a href="/2019/03/26/My-New-Post/">My New Post</a>
+            <a href="/2019/03/26/脱掉Java线程状态的衣服/">脱掉线程状态的衣服</a>
           </li>
         
           <li>
